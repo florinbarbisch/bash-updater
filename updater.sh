@@ -49,6 +49,8 @@ usage () {
 	echo "  -u USERNAME    YDNS username for authentication"
 	echo "  -p PASSWORD    YDNS password for authentication"
 	echo "  -i INTERFACE   Use the local IP address for the given interface"
+	echo "  -4             force IPv4"
+	echo "  -6             force IPv6"
 	echo "  -v             Display version"
 	echo "  -V             Enable verbose output"
 	exit 0
@@ -94,8 +96,10 @@ write_msg () {
 verbose=0
 local_interface_addr=
 custom_host=
+use_ipv4=0
+use_ipv6=0
 
-while getopts "hH:i:p:u:vV" opt; do
+while getopts "hH:i:p:u:46vV" opt; do
 	case $opt in
 		h)
 			usage
@@ -117,6 +121,14 @@ while getopts "hH:i:p:u:vV" opt; do
 			YDNS_USER=$OPTARG
 			;;
 
+		4)
+			use_ipv4=1
+			;;
+
+		6)
+			use_ipv6=1
+			;;
+
 		v)
 			show_version
 			;;
@@ -129,7 +141,25 @@ done
 
 if [ "$custom_host" != "" ]; then
 	YDNS_HOST=$custom_host
-	YDNS_LASTIP_FILE="/tmp/ydns_last_ip_${YDNS_HOST// /_}"
+
+	if [ $use_ipv4 -ne 0 ]; then
+		YDNS_LASTIP_FILE="/tmp/ydns_last_ipv4_${YDNS_HOST// /_}"
+	else
+		if [ $use_ipv6 -ne 0 ]; then
+			YDNS_LASTIP_FILE="/tmp/ydns_last_ipv6_${YDNS_HOST// /_}"
+		else
+			YDNS_LASTIP_FILE="/tmp/ydns_last_ip_${YDNS_HOST// /_}"
+		fi
+	fi
+else
+	# update YDNS_LASTIP_FILE when using -4 or -6
+	if [ $use_ipv4 -ne 0 ]; then
+		YDNS_LASTIP_FILE="/tmp/ydns_last_ipv4_$YDNS_HOST"
+	else
+		if [ $use_ipv6 -ne 0 ]; then
+			YDNS_LASTIP_FILE="/tmp/ydns_last_ipv6_$YDNS_HOST"
+		fi
+	fi
 fi
 
 if [ "$local_interface_addr" != "" ]; then
@@ -142,7 +172,15 @@ fi
 
 if [ "$current_ip" = "" ]; then
 	# Retrieve current public IP address
-	current_ip=`curl --silent https://ydns.io/api/v1/ip`
+	if [ $use_ipv4 -ne 0 ]; then
+		current_ip=`curl -4 --silent https://ydns.io/api/v1/ip`
+	else
+		if [ $use_ipv6 -ne 0 ]; then
+			current_ip=`curl -6 --silent https://ydns.io/api/v1/ip`
+	  else
+			current_ip=`curl --silent https://ydns.io/api/v1/ip`
+		fi
+	fi
 
     if [ "$current_ip" = "" ]; then
         write_msg "Error: Unable to retrieve current public IP address." 2
